@@ -185,6 +185,21 @@ service MessageService {
   // Calls
   //
   rpc RejectCall(RejectCallRequest) returns (Empty);
+  // Managed calls (meowcaller); off unless WAHA_GOWS_CALLS_ENABLED and SetCallSettings.
+  rpc GetCallSettings(Session) returns (CallSettings);
+  rpc SetCallSettings(SetCallSettingsRequest) returns (CallSettings);
+  rpc ListCalls(Session) returns (CallInfoList);
+  rpc GetCall(CallRequest) returns (CallInfo);
+  rpc StartCall(StartCallRequest) returns (CallInfo);
+  rpc AnswerCall(AnswerCallRequest) returns (CallInfo);
+  rpc RejectManagedCall(CallRequest) returns (Empty);
+  rpc HangupCall(CallRequest) returns (Empty);
+  rpc MuteCall(MuteCallRequest) returns (CallInfo);
+  rpc SetCallVideo(SetCallVideoRequest) returns (CallInfo);
+  rpc SetCallOrientation(SetCallOrientationRequest) returns (Empty);
+  // Media: the first client message names the call; later ones carry media.
+  rpc CallAudio(stream CallAudioIn) returns (stream CallAudioOut);
+  rpc CallVideo(stream CallVideoIn) returns (stream CallVideoOut);
 
   //
   // Storage
@@ -805,6 +820,108 @@ message RejectCallRequest {
   Session session = 1;
   string from = 2;
   string id = 3;
+}
+
+//
+// Managed calls
+//
+message CallSettings {
+  bool enabled = 1;
+  repeated string allow = 2; // phone numbers, or ["*"] for everyone
+  bool available = 3;        // false when the call hook could not be installed
+}
+
+message SetCallSettingsRequest {
+  Session session = 1;
+  bool enabled = 2;
+  repeated string allow = 3;
+}
+
+message CallInfo {
+  string callId = 1;
+  string direction = 2; // incoming | outgoing
+  string phone = 3;
+  string chatId = 4;
+  bool isVideo = 5;
+  string state = 6;     // ringing | calling | connecting | active | ended
+  bool muted = 7;
+  bool videoEnabled = 8;
+  bool peerVideoActive = 9;
+  string answeredBy = 10;
+  int64 startedAt = 11;
+  int64 connectedAt = 12;
+}
+
+message CallInfoList {
+  repeated CallInfo calls = 1;
+}
+
+message CallRequest {
+  Session session = 1;
+  string callId = 2;
+}
+
+message StartCallRequest {
+  Session session = 1;
+  string phone = 2;
+  bool video = 3;
+}
+
+message AnswerCallRequest {
+  Session session = 1;
+  string callId = 2;
+  string agent = 3;
+}
+
+message MuteCallRequest {
+  Session session = 1;
+  string callId = 2;
+  bool muted = 3;
+}
+
+message SetCallVideoRequest {
+  Session session = 1;
+  string callId = 2;
+  bool enabled = 3;
+}
+
+message SetCallOrientationRequest {
+  Session session = 1;
+  string callId = 2;
+  int32 orientation = 3;
+}
+
+message CallAudioIn {
+  CallRequest attach = 1; // first message only
+  bytes pcm = 2;          // s16le, 16 kHz, mono, any even length
+  bool flush = 3;         // drop agent audio still queued
+}
+
+message CallAudioStats {
+  int64 inFrames = 1;
+  int64 outFrames = 2;
+  double inPeak = 3;
+}
+
+message CallAudioOut {
+  bytes pcm = 1;            // exactly 1920 bytes (960 samples, 60 ms)
+  CallAudioStats stats = 2; // every 5 s
+}
+
+message CallVideoIn {
+  CallRequest attach = 1; // first message only
+  bytes accessUnit = 2;   // H.264 Annex-B, one picture
+  uint32 durationMs = 3;
+  int32 orientation = 4;  // set with setOrientation
+  bool setOrientation = 5;
+}
+
+message CallVideoOut {
+  bytes accessUnit = 1;
+  bool keyframe = 2;
+  int32 orientation = 3;
+  string control = 4;     // keyframe_request | peer_video | frames_dropped
+  bool active = 5;        // with control=peer_video
 }
 
 //

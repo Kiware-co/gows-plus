@@ -149,6 +149,10 @@ func main() {
 		log.Infof("Using keepalive ping interval: min=%s max=%s", min, max)
 	}
 
+	callsCfg := getCallsConfig()
+	gows.SetCallsEnabled(callsCfg.Enabled)
+	log.Infof("WhatsApp calls engine enabled: %v", callsCfg.Enabled)
+
 	// Build the server
 	grpcServer := buildGrpcServer(log)
 	// Open unix socket

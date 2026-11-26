@@ -43,7 +43,7 @@ func decide(allow Allowlist, resolve PNResolver, offer meowcaller.Offer) GateDec
 		d.Reason = "group call"
 		return d
 	}
-	if allow.Len() == 0 {
+	if allow.Empty() {
 		d.Reason = "empty allowlist"
 		return d
 	}
@@ -58,6 +58,11 @@ func decide(allow Allowlist, resolve PNResolver, offer meowcaller.Offer) GateDec
 			d.Reason = "allowlisted"
 			return d
 		}
+	}
+	if allow.All() {
+		d.Allowed = true
+		d.Reason = "all numbers allowed"
+		return d
 	}
 	if d.Phone == "" {
 		d.Reason = "caller phone unknown"

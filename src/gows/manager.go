@@ -3,6 +3,7 @@ package gows
 import (
 	"context"
 	"errors"
+	"github.com/devlikeapro/gows/calls"
 	"strings"
 	"sync"
 	"time"
@@ -162,6 +163,10 @@ func (sm *SessionManager) unlockedBuild(name string, cfg SessionConfig) (*GoWS, 
 		return nil, err
 	}
 	sm.sessions[name] = gows
+	if callsEnabled {
+		// Must happen before Start connects: the call hook patches whatsmeow's handlers.
+		gows.Calls = calls.New(gows.Client, callsLogger(name), gows.emitEvent)
+	}
 
 	err = gows.SetProxyAddress(cfg.Proxy.Url)
 	if err != nil {

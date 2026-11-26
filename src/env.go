@@ -201,3 +201,18 @@ func PatchDeviceProps(props *waCompanionReg.DeviceProps) {
 		h.SupportHatchHistory = cfg.SupportHatchHistory.Value
 	}
 }
+
+// CallsConfig switches the WhatsApp voice/video call engine (meowcaller).
+type CallsConfig struct {
+	// Enabled installs the call hook on every session. Each session then needs its own
+	// SetCallSettings(enabled=true) before any call is handled.
+	Enabled bool `env:"WAHA_GOWS_CALLS_ENABLED" envDefault:"false"`
+}
+
+func getCallsConfig() CallsConfig {
+	cfg := CallsConfig{}
+	if err := env.Parse(&cfg); err != nil {
+		panic(err)
+	}
+	return cfg
+}

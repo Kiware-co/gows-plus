@@ -3,6 +3,7 @@ package gows
 import (
 	"context"
 	"errors"
+	"github.com/devlikeapro/gows/calls"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -48,6 +49,8 @@ type GoWS struct {
 	// (connect and the FetchReachoutTimelock RPC bypass it).
 	timelockFetchMu   sync.Mutex
 	timelockFetchLast time.Time
+	// Calls runs WhatsApp voice/video calls; nil unless calls are enabled for the engine.
+	Calls *calls.Manager
 }
 
 func (gows *GoWS) reissueEvent(event interface{}) {
@@ -343,6 +346,9 @@ func (gows *GoWS) Stop() {
 		gows.RemoveEventHandler(gows.eventHandlerID)
 	}
 
+	if gows.Calls != nil {
+		gows.Calls.Close()
+	}
 	gows.Disconnect()
 	if gows.mediaRetryEvents != nil {
 		gows.mediaRetryEvents.Stop()
@@ -420,6 +426,7 @@ func BuildSession(
 		sync.Once{},
 		sync.Mutex{},
 		time.Time{},
+		nil,
 	}
 	gows.Storage = BuildStorage(container, gows, storageCfg)
 	gows.storageEventHandler = &StorageEventHandler{

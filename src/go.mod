@@ -59,7 +59,7 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
-	github.com/purpshell/meowcaller v0.0.0-20260907000000-c48c3e2a243c
+	github.com/purpshell/meowcaller v0.0.0-20260906234207-c48c3e2a243c
 	github.com/rs/zerolog v1.35.1
 	github.com/u2takey/go-utils v0.3.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.36 // indirect
@@ -77,4 +77,4 @@ require (
 
 replace go.mau.fi/whatsmeow => github.com/devlikeapro/whatsmeow v0.0.0-20260814102323-78592f479441
 
-replace github.com/purpshell/meowcaller => ../../meowcaller
+replace github.com/purpshell/meowcaller => github.com/Kiware-co/meowcaller v0.0.0-20261126222938-1ae8a1621f25

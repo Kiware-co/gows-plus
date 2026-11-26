@@ -101,7 +101,7 @@ func run(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
-	if allow.Len() == 0 && o.mode != "pair" {
+	if allow.Empty() && o.mode != "pair" {
 		return errors.New("-allow is required: calllab never answers or calls an unlisted number")
 	}
 	if err := os.MkdirAll(o.dataDir, 0o700); err != nil {
