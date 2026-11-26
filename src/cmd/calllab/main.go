@@ -42,6 +42,9 @@ type options struct {
 	mode        string
 	dataDir     string
 	qrPath      string
+	video       bool
+	videoFile   string
+	videoReply  string
 	pairPhone   string
 	codePath    string
 	allow       string
@@ -63,6 +66,9 @@ func main() {
 	flag.StringVar(&o.codePath, "code-file", "", "where to write the pairing code (default <data>/pair-code.txt)")
 	flag.StringVar(&o.allow, "allow", "", "comma-separated phone numbers allowed to call / be called (required)")
 	flag.StringVar(&o.target, "target", "", "number to call in -mode call (must be in -allow)")
+	flag.BoolVar(&o.video, "video", false, "call mode: place a video call sending -video-file")
+	flag.StringVar(&o.videoFile, "video-file", "/data/patron.h264", "Annex-B H.264 test pattern (15 fps, starts with a keyframe)")
+	flag.StringVar(&o.videoReply, "video-reply", "pattern", "listen mode, video calls: send back the test \"pattern\" or \"echo\" the caller's video")
 	flag.StringVar(&o.play, "play", "", "audio file (.wav/.mp3/.opus) to play into the call")
 	flag.BoolVar(&o.echo, "echo", true, "listen mode: play the caller's own voice back after ~1 s")
 	flag.DurationVar(&o.answerAfter, "answer-after", 4*time.Second, "listen mode: ring this long before answering (a human is slower than a bot)")
@@ -323,6 +329,9 @@ func handleIncoming(ctx context.Context, call *meowcaller.Call, o options) {
 	tee := calls.NewTee(sinks...)
 	call.Receive(tee)
 	wireLifecycle(ctx, log, call, tee, o.maxDuration)
+	if call.IsVideo() {
+		wireVideo(ctx, log, call, o, "in")
+	}
 
 	if err := call.Answer(); err != nil {
 		log.Error().Err(err).Msg("answer failed")
@@ -353,23 +362,29 @@ func place(ctx context.Context, mc *meowcaller.Client, allow calls.Allowlist, o 
 			return fmt.Errorf("open %s: %w", o.play, err)
 		}
 	}
-	call, err := mc.Call(ctx, target)
+	call, err := mc.CallWithOptions(ctx, target, meowcaller.CallOptions{Video: o.video})
 	if err != nil {
 		return fmt.Errorf("place call: %w", err)
 	}
 	clog := log.With().Str("call_id", call.ID()).Logger()
-	clog.Info().Str("target", target).Msg("calling")
+	clog.Info().Str("target", target).Bool("video", o.video).Msg("calling")
 
 	session := newRecording(clog, o.dataDir, "out", call.ID())
 	tee := calls.NewTee(session.wav)
 	call.Receive(tee)
 	ended := wireLifecycle(ctx, clog, call, tee, o.maxDuration)
+	if o.video {
+		wireVideo(ctx, clog, call, o, "out")
+	}
 	call.OnReady(func() {
 		clog.Info().Msg("media ready")
 		if src == nil {
 			return
 		}
 		p := call.Play(src)
+		if o.video {
+			return // video tests run until -max so the picture has time to show
+		}
 		p.OnFinish(func() {
 			clog.Info().Msg("audio file finished; hanging up in 3 s")
 			time.AfterFunc(3*time.Second, func() { _ = call.Hangup() })
