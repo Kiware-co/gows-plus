@@ -43,6 +43,7 @@ type options struct {
 	dataDir     string
 	qrPath      string
 	video       bool
+	loopAudio   bool
 	videoFile   string
 	videoReply  string
 	pairPhone   string
@@ -69,6 +70,7 @@ func main() {
 	flag.BoolVar(&o.video, "video", false, "call mode: place a video call sending -video-file")
 	flag.StringVar(&o.videoFile, "video-file", "/data/patron.h264", "Annex-B H.264 test pattern (15 fps, starts with a keyframe)")
 	flag.StringVar(&o.videoReply, "video-reply", "pattern", "listen mode, video calls: send back the test \"pattern\" or \"echo\" the caller's video")
+	flag.BoolVar(&o.loopAudio, "loop-audio", false, "listen mode: instead of echoing, loop the -play file to the caller")
 	flag.StringVar(&o.play, "play", "", "audio file (.wav/.mp3/.opus) to play into the call")
 	flag.BoolVar(&o.echo, "echo", true, "listen mode: play the caller's own voice back after ~1 s")
 	flag.DurationVar(&o.answerAfter, "answer-after", 4*time.Second, "listen mode: ring this long before answering (a human is slower than a bot)")
@@ -322,7 +324,7 @@ func handleIncoming(ctx context.Context, call *meowcaller.Call, o options) {
 	session := newRecording(log, o.dataDir, "in", call.ID())
 	sinks := []meowcaller.AudioSink{session.wav}
 	var echo *calls.Echo
-	if o.echo {
+	if o.echo && !o.loopAudio {
 		echo = calls.NewEcho(16, 200) // ~1 s delay, ~12 s buffer
 		sinks = append(sinks, echo)
 	}
@@ -338,15 +340,37 @@ func handleIncoming(ctx context.Context, call *meowcaller.Call, o options) {
 		return
 	}
 	log.Info().Msg("answered")
+	var played func() int
 	switch {
 	case echo != nil:
 		call.Play(echo)
+		played = echo.Played
+	case o.loopAudio && o.play != "":
+		src, err := openSource(o.play)
+		if err == nil {
+			var loop *calls.Loop
+			if loop, err = calls.NewLoop(src); err == nil {
+				call.Play(loop)
+				played = loop.Played
+			}
+		}
+		if err != nil {
+			log.Error().Err(err).Msg("open audio loop")
+		}
 	case o.play != "":
 		if src, err := openSource(o.play); err == nil {
 			call.Play(src)
 		} else {
 			log.Error().Err(err).Msg("open audio file")
 		}
+	}
+	if played != nil {
+		go func() {
+			for call.State() != meowcaller.CallPhaseEnded {
+				time.Sleep(5 * time.Second)
+				log.Info().Int("audio_out_voice_frames", played()).Msg("outbound audio")
+			}
+		}()
 	}
 }
 

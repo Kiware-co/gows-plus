@@ -3,6 +3,7 @@ package calls
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/purpshell/meowcaller"
@@ -156,4 +157,52 @@ func TestTee(t *testing.T) {
 	assert.Equal(t, 2, b.n)
 	require.NoError(t, tee.Close())
 	assert.Equal(t, 1, a.closed)
+}
+
+func TestEchoRecutsLongBlocks(t *testing.T) {
+	e := NewEcho(0, 10)
+	block := make([]float32, 3*meowcaller.FrameSamples+100) // a 0x92 container decodes to several frames
+	for i := range block {
+		block[i] = float32(i)
+	}
+	require.NoError(t, e.WriteFrame(block))
+	for i := 0; i < 3; i++ {
+		got, err := e.ReadFrame()
+		require.NoError(t, err)
+		require.Len(t, got, meowcaller.FrameSamples, "every frame the encoder sees is exactly 960 samples")
+		assert.Equal(t, float32(i*meowcaller.FrameSamples), got[0])
+	}
+	got, _ := e.ReadFrame()
+	assert.Nil(t, got, "the 100 leftover samples wait for more")
+	require.NoError(t, e.WriteFrame(make([]float32, meowcaller.FrameSamples-100)))
+	got, _ = e.ReadFrame()
+	require.Len(t, got, meowcaller.FrameSamples)
+	assert.Equal(t, float32(3*meowcaller.FrameSamples), got[0])
+	assert.Equal(t, 4, e.Played())
+}
+
+type sliceSource struct{ frames [][]float32 }
+
+func (s *sliceSource) ReadFrame() ([]float32, error) {
+	if len(s.frames) == 0 {
+		return nil, io.EOF
+	}
+	f := s.frames[0]
+	s.frames = s.frames[1:]
+	return f, nil
+}
+func (s *sliceSource) Close() error { return nil }
+
+func TestLoop(t *testing.T) {
+	l, err := NewLoop(&sliceSource{frames: [][]float32{frame(0.1), frame(0.2)}})
+	require.NoError(t, err)
+	for _, want := range []float32{0.1, 0.2, 0.1} {
+		got, err := l.ReadFrame()
+		require.NoError(t, err)
+		require.Len(t, got, meowcaller.FrameSamples)
+		assert.Equal(t, want, got[0])
+	}
+	assert.Equal(t, 3, l.Played())
+	_, err = NewLoop(&sliceSource{})
+	assert.Error(t, err)
 }

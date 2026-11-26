@@ -2,6 +2,7 @@ package calls
 
 import (
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/purpshell/meowcaller"
@@ -11,16 +12,22 @@ import (
 // that receives the peer's frames and the source the call plays from, which makes
 // it a self-contained two-way audio test: the caller hears themselves.
 //
+// Peer audio can arrive in blocks longer than one codec frame (video calls pack several
+// 60 ms frames in one packet), so Echo re-cuts it into exact FrameSamples frames: the
+// encoder rejects any other size and the engine then sends nothing for that tick.
+//
 // ReadFrame never blocks: with nothing queued it returns a nil frame, which the
 // engine sends as silence.
 type Echo struct {
 	mu      sync.Mutex
 	delay   int
 	queue   [][]float32
+	partial []float32
 	limit   int
 	primed  bool
 	closed  bool
 	dropped int
+	played  int
 }
 
 // NewEcho returns an Echo that starts replaying once delayFrames frames
@@ -35,18 +42,28 @@ func NewEcho(delayFrames, maxFrames int) *Echo {
 	return &Echo{delay: delayFrames, limit: maxFrames}
 }
 
-// WriteFrame queues a copy of a peer frame, dropping the oldest when full.
+// WriteFrame queues the peer's samples as FrameSamples-long frames, dropping the oldest
+// frames when full. Samples that do not fill a frame wait for the next write.
 func (e *Echo) WriteFrame(frame []float32) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
 		return nil
 	}
-	if len(e.queue) >= e.limit {
-		e.queue = e.queue[1:]
-		e.dropped++
+	e.partial = append(e.partial, frame...)
+	for len(e.partial) >= meowcaller.FrameSamples {
+		chunk := make([]float32, meowcaller.FrameSamples)
+		copy(chunk, e.partial)
+		e.partial = e.partial[meowcaller.FrameSamples:]
+		if len(e.queue) >= e.limit {
+			e.queue = e.queue[1:]
+			e.dropped++
+		}
+		e.queue = append(e.queue, chunk)
 	}
-	e.queue = append(e.queue, append([]float32(nil), frame...))
+	if len(e.partial) == 0 {
+		e.partial = nil
+	}
 	return nil
 }
 
@@ -68,7 +85,15 @@ func (e *Echo) ReadFrame() ([]float32, error) {
 	}
 	frame := e.queue[0]
 	e.queue = e.queue[1:]
+	e.played++
 	return frame, nil
+}
+
+// Played reports how many voice frames were handed to the call (not counting silence).
+func (e *Echo) Played() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.played
 }
 
 // Dropped reports how many frames were discarded because the queue was full.
@@ -84,6 +109,7 @@ func (e *Echo) Close() error {
 	defer e.mu.Unlock()
 	e.closed = true
 	e.queue = nil
+	e.partial = nil
 	return nil
 }
 
@@ -149,3 +175,56 @@ func (t *Tee) Close() error {
 	}
 	return first
 }
+
+// Loop replays a decoded audio clip forever as FrameSamples frames. Used to isolate the
+// outbound audio path from what the peer sends.
+type Loop struct {
+	mu     sync.Mutex
+	frames [][]float32
+	pos    int
+	played int
+}
+
+// NewLoop reads src to the end and loops its frames. src is closed.
+func NewLoop(src meowcaller.AudioSource) (*Loop, error) {
+	defer src.Close()
+	var all []float32
+	for {
+		f, err := src.ReadFrame()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		all = append(all, f...)
+	}
+	l := &Loop{}
+	for i := 0; i+meowcaller.FrameSamples <= len(all); i += meowcaller.FrameSamples {
+		l.frames = append(l.frames, all[i:i+meowcaller.FrameSamples])
+	}
+	if len(l.frames) == 0 {
+		return nil, errors.New("calls: audio clip shorter than one frame")
+	}
+	return l, nil
+}
+
+// ReadFrame returns the next frame of the clip, wrapping around.
+func (l *Loop) ReadFrame() ([]float32, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	f := l.frames[l.pos]
+	l.pos = (l.pos + 1) % len(l.frames)
+	l.played++
+	return f, nil
+}
+
+// Played reports how many frames were handed out.
+func (l *Loop) Played() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.played
+}
+
+// Close is a no-op; the loop never ends on its own.
+func (l *Loop) Close() error { return nil }
