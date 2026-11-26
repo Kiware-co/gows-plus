@@ -41,6 +41,8 @@ type options struct {
 	mode        string
 	dataDir     string
 	qrPath      string
+	pairPhone   string
+	codePath    string
 	allow       string
 	target      string
 	play        string
@@ -56,6 +58,8 @@ func main() {
 	flag.StringVar(&o.mode, "mode", "listen", "pair | listen | call")
 	flag.StringVar(&o.dataDir, "data", "./calllab-data", "directory for the device store and recordings")
 	flag.StringVar(&o.qrPath, "qr", "", "where to write the pairing QR as PNG (default <data>/qr.png)")
+	flag.StringVar(&o.pairPhone, "pair-phone", "", "link with an 8-character code sent to this phone instead of a QR")
+	flag.StringVar(&o.codePath, "code-file", "", "where to write the pairing code (default <data>/pair-code.txt)")
 	flag.StringVar(&o.allow, "allow", "", "comma-separated phone numbers allowed to call / be called (required)")
 	flag.StringVar(&o.target, "target", "", "number to call in -mode call (must be in -allow)")
 	flag.StringVar(&o.play, "play", "", "audio file (.wav/.mp3/.opus) to play into the call")
@@ -97,6 +101,14 @@ func run(ctx context.Context, o options) error {
 	if o.qrPath == "" {
 		o.qrPath = filepath.Join(o.dataDir, "qr.png")
 	}
+	if o.codePath == "" {
+		o.codePath = filepath.Join(o.dataDir, "pair-code.txt")
+	}
+	if o.pairPhone != "" {
+		if o.pairPhone, err = calls.NormalizePhone(o.pairPhone); err != nil {
+			return err
+		}
+	}
 
 	var rec *diag.Recorder
 	if o.diagDir != "" {
@@ -134,7 +146,7 @@ func run(ctx context.Context, o options) error {
 		return fmt.Errorf("call hook unavailable for this whatsmeow build: %w", err)
 	}
 
-	if err := connect(ctx, wa, o.qrPath); err != nil {
+	if err := connect(ctx, wa, o); err != nil {
 		return err
 	}
 	defer wa.Disconnect()
@@ -179,8 +191,10 @@ func openDevice(ctx context.Context, o options) (*whatsmeow.Client, error) {
 	return wa, nil
 }
 
-func connect(ctx context.Context, wa *whatsmeow.Client, qrPath string) error {
+func connect(ctx context.Context, wa *whatsmeow.Client, o options) error {
 	log := zerolog.Ctx(ctx)
+	qrPath := o.qrPath
+	codeRequested := false
 	if wa.Store.ID == nil {
 		qr, err := wa.GetQRChannel(ctx)
 		if err != nil {
@@ -192,16 +206,34 @@ func connect(ctx context.Context, wa *whatsmeow.Client, qrPath string) error {
 		for evt := range qr {
 			switch evt.Event {
 			case "code":
+				if o.pairPhone != "" {
+					if codeRequested {
+						continue
+					}
+					codeRequested = true
+					code, err := wa.PairPhone(ctx, o.pairPhone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+					if err != nil {
+						return fmt.Errorf("request pairing code: %w", err)
+					}
+					if err := os.WriteFile(o.codePath, []byte(code+"\n"), 0o600); err != nil {
+						return fmt.Errorf("write pairing code: %w", err)
+					}
+					log.Info().Str("code", code).Str("file", o.codePath).Str("phone", o.pairPhone).
+						Msg("enter the code: WhatsApp > Linked devices > Link with phone number instead")
+					continue
+				}
 				if err := qrcode.WriteFile(evt.Code, qrcode.Medium, 512, qrPath); err != nil {
 					return fmt.Errorf("write QR: %w", err)
 				}
 				log.Info().Str("png", qrPath).Dur("valid", evt.Timeout).Msg("scan the QR: WhatsApp > Linked devices")
 			case "success":
-				log.Info().Msg("QR scanned")
+				log.Info().Msg("device linked")
 				_ = os.Remove(qrPath)
+				_ = os.Remove(o.codePath)
 			default:
 				log.Warn().Str("event", evt.Event).Msg("pairing event")
 				_ = os.Remove(qrPath)
+				_ = os.Remove(o.codePath)
 			}
 		}
 		if wa.Store.ID == nil {
