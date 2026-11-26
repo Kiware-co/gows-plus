@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -178,9 +179,16 @@ func openDevice(ctx context.Context, o options) (*whatsmeow.Client, error) {
 		waLevel = "INFO"
 	}
 	dbPath := filepath.Join(o.dataDir, "device.db")
-	container, err := sqlstore.New(ctx, "sqlite3", "file:"+dbPath+"?_foreign_keys=on&_busy_timeout=5000", waLog.Stdout("db", waLevel, true))
+	db, err := sql.Open("sqlite3", "file:"+dbPath+"?_foreign_keys=on&_busy_timeout=10000&_journal_mode=WAL")
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
+	}
+	// One connection: whatsmeow writes from many goroutines during the first sync and
+	// SQLite otherwise answers "database is locked", which also breaks decryption.
+	db.SetMaxOpenConns(1)
+	container := sqlstore.NewWithDB(db, "sqlite3", waLog.Stdout("db", waLevel, true))
+	if err := container.Upgrade(ctx); err != nil {
+		return nil, fmt.Errorf("upgrade store: %w", err)
 	}
 	device, err := container.GetFirstDevice(ctx)
 	if err != nil {

@@ -14,7 +14,7 @@ cmd=${1:-}; shift || true
 case "$cmd" in
 build)
   podman run --rm \
-    -v "$ROOT:/w/gows-plus-calls:Z" -v "$MEOW:/w/meowcaller:z,ro" \
+    -v "$ROOT:/w/gows-plus-calls:z" -v "$MEOW:/w/meowcaller:z,ro" \
     -v "${GOMODCACHE:-$HOME/go/pkg/mod}:/go/pkg/mod:z" \
     -e GOFLAGS=-mod=mod -e GONOSUMDB=github.com/devlikeapro \
     -w /w/gows-plus-calls/src "$GOIMAGE" \
@@ -23,7 +23,7 @@ build)
 run)
   mkdir -p "$DATA_DIR"
   exec podman run --rm --name "${NAME:-calllab}" \
-    -v "$ROOT/bin:/app:z,ro" -v "$DATA_DIR:/data:Z" \
+    -v "$ROOT/bin:/app:z,ro" -v "$DATA_DIR:/data:z" \
     "$GOIMAGE" /app/calllab -data /data "$@"
   ;;
 *) echo "usage: $0 build | run <calllab flags>" >&2; exit 2 ;;
