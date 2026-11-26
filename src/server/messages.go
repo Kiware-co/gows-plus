@@ -470,6 +470,31 @@ func (s *Server) SendMessage(ctx context.Context, req *__.MessageRequest) (*__.M
 			}
 			message.PtvMessage.ContextInfo = contextInfo
 
+		case __.MediaType_STICKER:
+			// Stickers are uploaded as images, but sent as StickerMessage
+			mediaType = whatsmeow.MediaImage
+			info, err := media.ParseWebP(req.Media.Content)
+			if err != nil {
+				return nil, err
+			}
+			mediaResponse, err = cli.UploadMedia(ctx, jid, req.Media.Content, mediaType)
+			if err != nil {
+				return nil, err
+			}
+			message.StickerMessage = &waE2E.StickerMessage{
+				Mimetype:      proto.String("image/webp"),
+				URL:           proto.String(mediaResponse.URL),
+				DirectPath:    proto.String(mediaResponse.DirectPath),
+				MediaKey:      mediaResponse.MediaKey,
+				FileEncSHA256: mediaResponse.FileEncSHA256,
+				FileSHA256:    mediaResponse.FileSHA256,
+				FileLength:    proto.Uint64(mediaResponse.FileLength),
+				Width:         proto.Uint32(info.Width),
+				Height:        proto.Uint32(info.Height),
+				IsAnimated:    proto.Bool(info.Animated),
+			}
+			message.StickerMessage.ContextInfo = contextInfo
+
 		case __.MediaType_DOCUMENT:
 			mediaType = whatsmeow.MediaDocument
 			// Upload
