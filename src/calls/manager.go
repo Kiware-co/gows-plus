@@ -438,6 +438,10 @@ func endReason(raw string, f endFacts) (reason, detail string) {
 		return ReasonRejectedLocal, ""
 	case f.localHangup:
 		return ReasonHangupLocal, ""
+	case lower == "accepted_elsewhere":
+		return ReasonAnsweredElsewhere, ""
+	case lower == "rejected_elsewhere":
+		return ReasonRejectedElsewhere, ""
 	case strings.HasPrefix(lower, "server:"):
 		return ReasonFailed, raw
 	case strings.Contains(lower, "busy"):

@@ -22,6 +22,7 @@ const (
 	ReasonRejectedLocal     = "rejected_local"
 	ReasonRejectedRemote    = "rejected_remote"
 	ReasonAnsweredElsewhere = "answered_elsewhere"
+	ReasonRejectedElsewhere = "rejected_elsewhere"
 	ReasonMissed            = "missed"
 	ReasonBusy              = "busy"
 	ReasonFailed            = "failed"

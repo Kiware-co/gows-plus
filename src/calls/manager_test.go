@@ -231,6 +231,8 @@ func TestEndReasonMapping(t *testing.T) {
 		{"hangup", endFacts{localHangup: true, connected: true}, ReasonHangupLocal},
 		{"rejected", endFacts{localReject: true}, ReasonRejectedLocal},
 		{"", endFacts{elsewhere: true}, ReasonAnsweredElsewhere},
+		{"accepted_elsewhere", endFacts{}, ReasonAnsweredElsewhere},
+		{"rejected_elsewhere", endFacts{}, ReasonRejectedElsewhere},
 	}
 	for _, tc := range cases {
 		got, _ := endReason(tc.raw, tc.facts)
