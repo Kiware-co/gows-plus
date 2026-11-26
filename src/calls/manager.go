@@ -178,11 +178,11 @@ func (m *Manager) gate(offer meowcaller.Offer) bool {
 	if d.Allowed && busy {
 		d.Allowed, d.Reason = false, "busy"
 	}
-	ev := m.log.Info()
-	if !d.Allowed {
-		ev = m.log.Debug()
-	}
-	ev.Str("call_id", offer.CallID).Bool("video", offer.Video).Bool("engaged", d.Allowed).Str("reason", d.Reason).Msg("incoming offer")
+	// Every decision is logged; the caller's number only when engaged, so declined
+	// callers (anyone who calls the number) stay out of the logs.
+	m.log.Info().Str("call_id", offer.CallID).Bool("video", offer.Video).Bool("engaged", d.Allowed).
+		Str("reason", d.Reason).Str("from_server", offer.From.Server).Bool("phone_resolved", d.Phone != "").
+		Msg("incoming offer")
 	return d.Allowed
 }
 
