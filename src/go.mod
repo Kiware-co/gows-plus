@@ -1,6 +1,6 @@
 module github.com/devlikeapro/gows
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.26.4
 
@@ -14,12 +14,12 @@ require (
 	github.com/h2non/bimg v1.1.9
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/mattn/go-sqlite3 v1.14.48
-	github.com/stretchr/testify v1.11.1
+	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/stretchr/testify v1.12.0
 	github.com/u2takey/ffmpeg-go v0.5.0
 	go.mau.fi/whatsmeow v0.0.0-20260721154117-8b4a8ba0d318 // find "replace" for the project below with a fork project
 	google.golang.org/grpc v1.77.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -27,7 +27,19 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/samber/lo v1.49.1
-	go.mau.fi/util v0.9.12-0.20260717235539-f9ffa7eca58d
+	go.mau.fi/util v0.11.0
+)
+
+require (
+	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
+	github.com/pion/datachannel v1.6.0 // indirect
+	github.com/pion/dtls/v3 v3.1.2 // indirect
+	github.com/pion/logging v0.2.4 // indirect
+	github.com/pion/opus v0.1.0 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/sctp v1.9.4 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
 require (
@@ -35,7 +47,6 @@ require (
 	github.com/aws/aws-sdk-go v1.55.8 // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -47,21 +58,23 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
-	github.com/petermattis/goid v0.0.0-20260716134002-a9b348f0a2b9 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rs/zerolog v1.35.1 // indirect
+	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
+	github.com/purpshell/meowcaller v0.0.0-20260907000000-c48c3e2a243c
+	github.com/rs/zerolog v1.35.1
 	github.com/u2takey/go-utils v0.3.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.36 // indirect
 	go.mau.fi/libsignal v0.2.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/exp v0.0.0-20260718201538-764159d718ef // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260720211330-0afa2a65878a // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace go.mau.fi/whatsmeow => github.com/devlikeapro/whatsmeow v0.0.0-20260814102323-78592f479441
+
+replace github.com/purpshell/meowcaller => ../../meowcaller
