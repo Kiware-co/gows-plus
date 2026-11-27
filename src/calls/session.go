@@ -34,6 +34,10 @@ type session struct {
 	inFrames    int
 	inPeak      float32
 	outFrames   int
+	videoIn     int
+	videoInKey  int
+	videoOut    int
+	videoErrs   int
 
 	audio *AudioPort
 	video *VideoPort
@@ -43,7 +47,7 @@ func (s *session) wire() {
 	c := s.call
 	c.Receive(meowcaller.SinkFunc(s.onPeerAudio))
 	c.Play(sessionSource{s})
-	c.ReceiveVideo(meowcaller.VideoSinkFunc(s.onPeerVideo))
+	c.ReceiveVideo(peerVideoSink{s})
 	c.OnReady(s.onConnected)
 	c.OnStateChange(func(p meowcaller.CallPhase) {
 		if p == meowcaller.CallPhaseActive {
@@ -136,7 +140,10 @@ func (s *session) setVideo(enabled bool) (Info, error) {
 	switch {
 	case enabled == current:
 	case enabled && upgradeAsk:
-		err = s.call.AcceptVideo()
+		// Accepting only lets the peer's camera in; our camera is a separate switch.
+		if err = s.call.AcceptVideo(); err == nil {
+			err = s.call.SetVideoEnabled(true)
+		}
 	case enabled && !isVideo:
 		err = s.call.StartVideo()
 	default:
@@ -210,6 +217,7 @@ func (s *session) finish(raw string) {
 	}
 	audio, video := s.audio, s.video
 	s.audio, s.video = nil, nil
+	stats := [...]int{s.inFrames, s.outFrames, s.videoIn, s.videoInKey, s.videoOut, s.videoErrs}
 	s.mu.Unlock()
 
 	if audio != nil {
@@ -220,7 +228,11 @@ func (s *session) finish(raw string) {
 	}
 	s.out.Reset()
 	s.m.release(s)
-	s.m.log.Info().Str("call_id", s.id).Str("reason", reason).Str("raw_reason", raw).Int64("duration_ms", ev.DurationMs).Msg("call ended")
+	s.m.log.Info().Str("call_id", s.id).Str("reason", reason).Str("raw_reason", raw).Int64("duration_ms", ev.DurationMs).
+		Int("audio_in_frames", stats[0]).Int("audio_out_frames", stats[1]).
+		Int("video_in_frames", stats[2]).Int("video_in_keyframes", stats[3]).
+		Int("video_out_frames", stats[4]).Int("video_out_errors", stats[5]).
+		Msg("call ended")
 	s.m.emit(ev)
 }
 
@@ -291,12 +303,42 @@ func (s *session) nextOutFrame() []float32 {
 }
 
 func (s *session) onPeerVideo(au []byte) {
+	key := IsKeyframe(au)
 	s.mu.Lock()
+	s.videoIn++
+	if key {
+		s.videoInKey++
+	}
 	port, orientation := s.video, s.orientation
 	s.mu.Unlock()
 	if port != nil {
-		port.deliver(VideoFrame{AccessUnit: au, Keyframe: IsKeyframe(au), Orientation: orientation})
+		port.deliver(VideoFrame{AccessUnit: au, Keyframe: key, Orientation: orientation})
 	}
+}
+
+// peerVideoSink receives the peer's access units and the per-frame display rotation
+// (RTP CVO). Phones render by the in-band rotation, not the <video> stanza, so it is
+// what the client must use to show the picture upright.
+type peerVideoSink struct{ s *session }
+
+func (p peerVideoSink) WriteVideo(au []byte) error { p.s.onPeerVideo(au); return nil }
+func (p peerVideoSink) Close() error               { return nil }
+func (p peerVideoSink) SetOrientation(o int)       { p.s.onPeerOrientation(o) }
+
+func (s *session) onPeerOrientation(orientation int) {
+	s.mu.Lock()
+	changed := s.orientation != orientation
+	s.orientation = orientation
+	active := s.info.PeerVideoActive
+	port := s.video
+	s.mu.Unlock()
+	if !changed {
+		return
+	}
+	if port != nil {
+		port.control(VideoControl{Type: "peer_video", Active: active, Orientation: orientation})
+	}
+	s.m.emit(&Video{CallID: s.id, PeerVideoActive: active, Orientation: orientation})
 }
 
 func (s *session) onVideoState(v meowcaller.VideoState) {
@@ -331,7 +373,15 @@ func (s *session) sendVideo(au []byte, duration time.Duration) error {
 	if !enabled {
 		return nil
 	}
-	return s.call.SendVideoWithDuration(au, duration)
+	err := s.call.SendVideoWithDuration(au, duration)
+	s.mu.Lock()
+	if err != nil {
+		s.videoErrs++
+	} else {
+		s.videoOut++
+	}
+	s.mu.Unlock()
+	return err
 }
 
 func (s *session) stats() AudioStats {

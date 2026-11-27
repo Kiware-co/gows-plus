@@ -358,6 +358,7 @@ func TestVoiceCallUpgrade(t *testing.T) {
 	_, err = m2.SetVideo("P", true)
 	require.NoError(t, err)
 	assert.Equal(t, 1, c2.accepts, "peer's upgrade request is accepted")
+	assert.Equal(t, []bool{true}, c2.camera, "and our own camera is turned on with it")
 }
 
 func TestSettingsRejectsBadNumbers(t *testing.T) {
@@ -375,4 +376,29 @@ func TestDisabledManagerRefusesStart(t *testing.T) {
 	_, _ = m.SetSettings(true, []string{allowedPhone})
 	_, err = m.Start(context.Background(), otherPhone, false)
 	assert.ErrorIs(t, err, ErrNotAllowed)
+}
+
+func TestPeerOrientationFromRTP(t *testing.T) {
+	m, rec := testManager(t)
+	c, _ := incoming(m, "O", true)
+	port, err := m.AttachVideo("O")
+	require.NoError(t, err)
+	sink, ok := c.vsink.(meowcaller.VideoOrientationSink)
+	require.True(t, ok, "the sink must take the per-frame rotation")
+	sink.SetOrientation(1)
+	assert.Equal(t, VideoControl{Type: "peer_video", Orientation: 1}, <-port.Controls())
+	ev, ok := rec.last().(*Video)
+	require.True(t, ok)
+	assert.Equal(t, 1, ev.Orientation)
+
+	idr := []byte{0, 0, 0, 1, 0x65, 0x88}
+	require.NoError(t, c.vsink.WriteVideo(idr))
+	assert.Equal(t, 1, (<-port.Frames()).Orientation, "frames carry the current rotation")
+
+	sink.SetOrientation(1)
+	select {
+	case got := <-port.Controls():
+		t.Fatalf("unchanged rotation must not be re-sent: %+v", got)
+	default:
+	}
 }
