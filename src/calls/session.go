@@ -138,12 +138,14 @@ func (s *session) setVideo(enabled bool) (Info, error) {
 	s.mu.Unlock()
 	var err error
 	switch {
-	case enabled == current:
+	// A pending peer request is answered even when our camera is already on: the phone
+	// resends it every ~5 s and shows "loading" (freezing both pictures) until accepted.
 	case enabled && upgradeAsk:
 		// Accepting only lets the peer's camera in; our camera is a separate switch.
 		if err = s.call.AcceptVideo(); err == nil {
 			err = s.call.SetVideoEnabled(true)
 		}
+	case enabled == current:
 	case enabled && !isVideo:
 		err = s.call.StartVideo()
 	default:
@@ -341,18 +343,43 @@ func (s *session) onPeerOrientation(orientation int) {
 	s.m.emit(&Video{CallID: s.id, PeerVideoActive: active, Orientation: orientation})
 }
 
+// Peer <video> states that say whether its camera is on (others are upgrade signalling).
+const (
+	peerVideoDisabled = 0
+	peerVideoEnabled  = 1
+	peerVideoStopped  = 6
+)
+
 func (s *session) onVideoState(v meowcaller.VideoState) {
 	s.mu.Lock()
-	s.info.PeerVideoActive = v.Active
+	switch v.Raw {
+	case peerVideoEnabled:
+		s.info.PeerVideoActive = true
+	case peerVideoDisabled, peerVideoStopped:
+		s.info.PeerVideoActive = false
+	}
 	s.orientation = v.Orientation
-	if v.Upgrade {
+	// Our camera already on means the agent already chose video: accept the peer's
+	// request at once instead of leaving its phone waiting.
+	autoAccept := v.Upgrade && s.info.VideoEnabled && !s.ended
+	if v.Upgrade && !autoAccept {
 		s.upgradeAsk = true
 	}
+	active := s.info.PeerVideoActive
 	port := s.video
-	ev := &Video{CallID: s.id, PeerVideoActive: v.Active, Orientation: v.Orientation, UpgradeRequested: v.Upgrade}
+	ev := &Video{CallID: s.id, PeerVideoActive: active, Orientation: v.Orientation, UpgradeRequested: v.Upgrade && !autoAccept}
 	s.mu.Unlock()
+	if autoAccept {
+		if err := s.call.AcceptVideo(); err != nil {
+			s.m.log.Warn().Err(err).Str("call_id", s.id).Msg("auto-accepting peer video upgrade failed")
+		} else {
+			s.m.log.Info().Str("call_id", s.id).Msg("peer video upgrade auto-accepted (our camera is on)")
+		}
+	}
+	s.m.log.Info().Str("call_id", s.id).Int("state", v.Raw).Bool("upgrade", v.Upgrade).Bool("auto_accept", autoAccept).
+		Int("orientation", v.Orientation).Msg("peer video state")
 	if port != nil {
-		port.control(VideoControl{Type: "peer_video", Active: v.Active, Orientation: v.Orientation})
+		port.control(VideoControl{Type: "peer_video", Active: active, Orientation: v.Orientation})
 	}
 	s.m.emit(ev)
 }

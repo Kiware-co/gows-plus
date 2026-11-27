@@ -329,7 +329,7 @@ func TestVideoPortAndCamera(t *testing.T) {
 
 	c.onKey()
 	assert.Equal(t, "keyframe_request", (<-port.Controls()).Type)
-	c.onVideo(meowcaller.VideoState{Active: true, Orientation: 1})
+	c.onVideo(meowcaller.VideoState{Active: true, Orientation: 1, Raw: 1})
 	assert.Equal(t, VideoControl{Type: "peer_video", Active: true, Orientation: 1}, <-port.Controls())
 	ev, ok := rec.last().(*Video)
 	require.True(t, ok)
@@ -401,4 +401,47 @@ func TestPeerOrientationFromRTP(t *testing.T) {
 		t.Fatalf("unchanged rotation must not be re-sent: %+v", got)
 	default:
 	}
+}
+
+func TestPeerUpgradeWhileOurCameraIsOn(t *testing.T) {
+	m, rec := testManager(t)
+	c, _ := incoming(m, "AUTO", true) // video call: our camera is on
+	c.onVideo(meowcaller.VideoState{Upgrade: true, Raw: 11})
+	assert.Equal(t, 1, c.accepts, "accepted at once, the phone must not wait")
+	ev := rec.last().(*Video)
+	assert.False(t, ev.UpgradeRequested, "nothing left for the agent to decide")
+
+	// Camera on but the request still pending (e.g. auto-accept failed): enabling again
+	// must answer it, not return early because the camera is already on.
+	m2, _ := testManager(t)
+	c2, _ := incoming(m2, "PEND", false)
+	_, err := m2.SetVideo("PEND", true) // voice call: we ask to upgrade
+	require.NoError(t, err)
+	c2.onVideo(meowcaller.VideoState{Upgrade: true, Raw: 11}) // auto-accepted
+	assert.Equal(t, 1, c2.accepts)
+
+	m3, _ := testManager(t)
+	c3, s3 := incoming(m3, "LATE", false)
+	c3.onVideo(meowcaller.VideoState{Upgrade: true, Raw: 11}) // camera off: agent decides
+	assert.Equal(t, 0, c3.accepts)
+	s3.mu.Lock()
+	s3.info.VideoEnabled = true // e.g. state changed elsewhere
+	s3.mu.Unlock()
+	_, err = m3.SetVideo("LATE", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, c3.accepts, "pending request answered even with the camera already on")
+}
+
+func TestUpgradeRequestDoesNotHidePeerVideo(t *testing.T) {
+	m, _ := testManager(t)
+	c, _ := incoming(m, "KEEP", true)
+	c.onVideo(meowcaller.VideoState{Active: true, Raw: 1})
+	info, _ := m.Get("KEEP")
+	require.True(t, info.PeerVideoActive)
+	c.onVideo(meowcaller.VideoState{Upgrade: true, Raw: 11})
+	info, _ = m.Get("KEEP")
+	assert.True(t, info.PeerVideoActive, "an upgrade request is not the camera going off")
+	c.onVideo(meowcaller.VideoState{Raw: 6})
+	info, _ = m.Get("KEEP")
+	assert.False(t, info.PeerVideoActive)
 }
